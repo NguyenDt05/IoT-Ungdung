@@ -1,0 +1,23 @@
+{
+  "name": "iot-smart-device-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REST API and MQTT gateway for the IoT monitoring system",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "mqtt": "^5.10.3",
+    "mysql2": "^3.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
