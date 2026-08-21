@@ -1,0 +1,190 @@
+.sidebar {
+  position: relative;
+  isolation: isolate;
+  width: 238px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: rgba(252, 253, 252, 0.94);
+  border-right: 1px solid var(--line);
+  box-shadow: 5px 0 24px rgba(29, 41, 35, 0.025);
+}
+
+.sidebar::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: -80px;
+  left: -90px;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(31, 122, 91, 0.085), transparent 68%);
+}
+
+.sidebar__header {
+  padding: 27px 22px 10px;
+}
+
+.sidebar__title {
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.sidebar__divider,
+.sidebar__user-divider {
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-strong), transparent);
+}
+
+.sidebar__divider { margin-bottom: 10px; }
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 13px;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  gap: 11px;
+  padding: 9px 12px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 520;
+  line-height: 1.35;
+  text-decoration: none;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.nav-item::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+}
+
+.nav-item:hover {
+  color: var(--ink-soft);
+  background: var(--surface-soft);
+  transform: translateX(1px);
+}
+
+.nav-item.active {
+  color: var(--brand-deep);
+  background: var(--brand-soft);
+  border-color: rgba(31, 122, 91, 0.09);
+  font-weight: 670;
+}
+
+.nav-item.active::before { background: var(--brand); }
+
+.nav-item__icon {
+  width: 19px;
+  flex-shrink: 0;
+  color: var(--muted-light);
+  transition: color 160ms ease;
+}
+
+.nav-item:hover .nav-item__icon { color: var(--ink-soft); }
+.nav-item.active .nav-item__icon { color: var(--brand); }
+
+.nav-item__dot {
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31, 122, 91, 0.1);
+}
+
+.sidebar__spacer { flex: 1; }
+
+.sidebar__user {
+  padding: 14px 19px 22px;
+}
+
+.sidebar__user-divider { margin-bottom: 15px; }
+
+.user-card-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: -5px -7px;
+  padding: 7px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.user-card-link:hover {
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: 1px solid rgba(31, 122, 91, 0.18);
+  border-radius: 11px;
+  background: var(--brand-soft);
+  box-shadow: 0 5px 12px rgba(31, 122, 91, 0.16);
+  object-fit: cover;
+  object-position: 50% 42%;
+}
+
+.user-name {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.user-role {
+  margin-top: 1px;
+  color: var(--muted-light);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .sidebar { width: 76px; }
+  .sidebar__header { padding: 27px 13px 10px; }
+  .sidebar__title { visibility: hidden; }
+  .sidebar__nav { padding: 0 10px; }
+  .nav-item { justify-content: center; padding: 9px; }
+  .nav-item > span:not(.nav-item__dot) { display: none; }
+  .nav-item__dot { position: absolute; right: 7px; margin: 0; }
+  .sidebar__user { padding: 14px 16px 22px; }
+  .user-card-link { justify-content: center; }
+  .user-card-link > div:last-child { display: none; }
+}
+
+@media (max-width: 560px) {
+  .sidebar { width: 64px; }
+  .sidebar__nav { padding: 0 7px; }
+  .sidebar__user { padding-inline: 13px; }
+}
