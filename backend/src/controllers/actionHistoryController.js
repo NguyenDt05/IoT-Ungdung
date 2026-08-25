@@ -1,4 +1,5 @@
 const { pool } = require('../config/database');
+const AppError = require('../utils/AppError');
 const { parsePagination, buildPagination } = require('../utils/pagination');
 
 async function getActionHistory(req, res, next) {
@@ -8,16 +9,19 @@ async function getActionHistory(req, res, next) {
     const params = [];
     let whereClause = '';
 
+    if (keyword.length > 100) {
+      throw new AppError('keyword must not exceed 100 characters', 400);
+    }
+
     if (keyword) {
       whereClause = `WHERE (
         d.device_name LIKE ? OR
         ah.action LIKE ? OR
         ah.status LIKE ? OR
-        u.full_name LIKE ? OR
-        CAST(ah.action_id AS CHAR) LIKE ?
+        DATE_FORMAT(ah.created_at, '%Y/%m/%d %H:%i:%s') LIKE ?
       )`;
       const pattern = `%${keyword}%`;
-      params.push(pattern, pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern, pattern);
     }
 
     const joins = `

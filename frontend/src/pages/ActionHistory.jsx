@@ -11,19 +11,20 @@ import './actionhistory.css'
 
 const PAGE_SIZE = 10
 const REFRESH_INTERVAL = 2_000
+const SEARCH_DEBOUNCE_MS = 500
 
 function fmtTime(timestamp) {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return '—'
 
-  return date.toLocaleString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  })
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`
 }
 
 const STATUS_MAP = {
@@ -74,7 +75,7 @@ export default function ActionHistory() {
     const debounceTimer = setTimeout(() => {
       setPage(1)
       setKeyword(search.trim())
-    }, 300)
+    }, SEARCH_DEBOUNCE_MS)
 
     return () => clearTimeout(debounceTimer)
   }, [search])

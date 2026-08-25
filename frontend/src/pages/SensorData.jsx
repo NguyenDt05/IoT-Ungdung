@@ -1,160 +1,165 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Search, ChevronDown, Thermometer, Droplets, Sun,
-  ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight
+  Search,
+  ChevronDown,
+  Thermometer,
+  Droplets,
+  Sun,
+  ChevronsLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
 } from 'lucide-react'
+import { fetchSensorHistory } from '../services/api'
 import './sensordata.css'
 
-/* ─────────────────────────────────────────────────────────────
-   Mock data – 50 bản ghi, mô phỏng dữ liệu thực tế từ BE
-   Cấu trúc: { id, type, name, value, unit, timestamp }
-──────────────────────────────────────────────────────────────── */
-function buildMockData() {
-  const TYPES = [
-    { type: 'temp', name: 'Cảm biến nhiệt độ', unit: '°C', min: 28, max: 37 },
-    { type: 'humid', name: 'Cảm biến độ ẩm', unit: '%', min: 24, max: 36 },
-    { type: 'light', name: 'Cảm biến ánh sáng', unit: 'Lux', min: 8, max: 32 },
-  ]
-  const rows = []
-  const now = Date.now()
-
-  for (let i = 0; i < 50; i++) {
-    const sensor = TYPES[i % TYPES.length]
-    const value = +(sensor.min + Math.random() * (sensor.max - sensor.min)).toFixed(1)
-    const ts = new Date(now - i * 90_000) // mỗi bản ghi cách nhau 1.5 phút
-    rows.push({
-      id: i + 1,
-      type: sensor.type,
-      name: sensor.name,
-      value,
-      unit: sensor.unit,
-      timestamp: ts,
-    })
-  }
-  return rows
-}
-
-const ALL_DATA = buildMockData()
+const PAGE_SIZE = 10
+const SEARCH_DEBOUNCE_MS = 500
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả cảm biến' },
-  { value: 'temp', label: 'Nhiệt độ (°C)' },
-  { value: 'humid', label: 'Độ ẩm (%)' },
+  { value: 'temperature', label: 'Nhiệt độ (°C)' },
+  { value: 'humidity', label: 'Độ ẩm (%)' },
   { value: 'light', label: 'Ánh sáng (Lux)' },
 ]
 
-const PAGE_SIZE = 10
+function fmtTime(timestamp) {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return '—'
 
-/* ── Format timestamp ── */
-function fmtTime(ts) {
-  const d = new Date(ts)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  const ss = String(d.getSeconds()).padStart(2, '0')
-  const DD = String(d.getDate()).padStart(2, '0')
-  const MM = String(d.getMonth() + 1).padStart(2, '0')
-  const YY = d.getFullYear()
-  return `${hh}:${mm}:${ss} ${DD}/${MM}/${YY}`
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+
+  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`
 }
 
-/* ── Value badge ── */
 function ValueBadge({ type, value, unit }) {
-  const cls =
-    type === 'temp' ? 'sd-value sd-value--temp' :
-      type === 'humid' ? 'sd-value sd-value--humid' :
+  const className =
+    type === 'temperature' ? 'sd-value sd-value--temp' :
+      type === 'humidity' ? 'sd-value sd-value--humid' :
         'sd-value sd-value--light'
   const Icon =
-    type === 'temp' ? Thermometer :
-      type === 'humid' ? Droplets : Sun
+    type === 'temperature' ? Thermometer :
+      type === 'humidity' ? Droplets : Sun
 
   return (
-    <span className={cls}>
+    <span className={className}>
       <Icon size={13} strokeWidth={2} />
       {value}{unit}
     </span>
   )
 }
 
-/* ── Pagination helper ── */
 function pageNumbers(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
   if (current <= 4) return [1, 2, 3, 4, 5, '…', total]
   if (current >= total - 3) return [1, '…', total - 4, total - 3, total - 2, total - 1, total]
   return [1, '…', current - 1, current, current + 1, '…', total]
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Main Component
-═══════════════════════════════════════════════════════════ */
 export default function SensorData() {
   const [search, setSearch] = useState('')
+  const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState('all')
   const [page, setPage] = useState(1)
+  const [rows, setRows] = useState([])
+  const [pagination, setPagination] = useState({ totalPages: 0, totalItems: 0 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
 
-  /* Close dropdown on outside click */
   useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+    const handler = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false)
+      }
     }
+
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  /* Reset to page 1 whenever search/filter changes */
-  useEffect(() => { setPage(1) }, [search, filter])
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      setPage(1)
+      setKeyword(search.trim())
+    }, SEARCH_DEBOUNCE_MS)
 
-  /* Filtered + searched rows */
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return ALL_DATA.filter((row) => {
-      const matchType = filter === 'all' || row.type === filter
-      const matchSearch = !q || row.name.toLowerCase().includes(q) ||
-        String(row.id).includes(q) ||
-        String(row.value).includes(q)
-      return matchType && matchSearch
-    })
-  }, [search, filter])
+    return () => clearTimeout(debounceTimer)
+  }, [search])
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const pageData = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-  const pages = pageNumbers(page, totalPages)
+  useEffect(() => {
+    const controller = new AbortController()
 
-  const currentLabel = FILTER_OPTIONS.find((o) => o.value === filter)?.label ?? 'Tất cả cảm biến'
+    const loadSensorHistory = async () => {
+      setLoading(true)
+
+      try {
+        const payload = await fetchSensorHistory(
+          {
+            page,
+            limit: PAGE_SIZE,
+            keyword: keyword || undefined,
+            type: filter === 'all' ? undefined : filter,
+          },
+          controller.signal,
+        )
+
+        setRows(Array.isArray(payload.data) ? payload.data : [])
+        setPagination(payload.pagination || { totalPages: 0, totalItems: 0 })
+        setError(null)
+      } catch (requestError) {
+        if (requestError.name !== 'CanceledError' && requestError.code !== 'ERR_CANCELED') {
+          setError(requestError.response?.data?.message || 'Không thể tải dữ liệu cảm biến.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    void loadSensorHistory()
+    return () => controller.abort()
+  }, [filter, keyword, page])
+
+  const totalPages = Math.max(1, Number(pagination.totalPages) || 0)
+  const pages = useMemo(() => pageNumbers(page, totalPages), [page, totalPages])
+  const currentLabel = FILTER_OPTIONS.find((option) => option.value === filter)?.label
+    ?? FILTER_OPTIONS[0].label
+
+  const selectFilter = (value) => {
+    setFilter(value)
+    setPage(1)
+    setDropdownOpen(false)
+  }
 
   return (
     <div className="page sensor-data-page">
-      {/* ── Heading ── */}
       <div className="page-header">
-        <h1 className="page-title">
-          Dữ liệu cảm biến
-        </h1>
-        <p className="page-subtitle">
-          Giám sát các cảm biến theo thời gian thực
-        </p>
+        <h1 className="page-title">Dữ liệu cảm biến</h1>
+        <p className="page-subtitle">Giám sát các cảm biến theo thời gian thực</p>
       </div>
 
-      {/* ── Toolbar: Search + Filter ── */}
       <div className="sd-toolbar">
-        {/* Search */}
         <div className="sd-search">
           <Search size={15} className="sd-search__icon" />
           <input
             className="sd-search__input"
-            type="text"
+            type="search"
             placeholder="Search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => setSearch(event.target.value)}
           />
         </div>
 
-        {/* Filter dropdown */}
         <div className="sd-filter" ref={dropdownRef}>
           <button
             className="sd-filter__btn"
-            onClick={() => setDropdownOpen((v) => !v)}
+            onClick={() => setDropdownOpen((open) => !open)}
           >
             {currentLabel}
             <ChevronDown
@@ -165,13 +170,13 @@ export default function SensorData() {
 
           {dropdownOpen && (
             <div className="sd-filter__menu">
-              {FILTER_OPTIONS.map((opt) => (
+              {FILTER_OPTIONS.map((option) => (
                 <button
-                  key={opt.value}
-                  className={`sd-filter__option${filter === opt.value ? ' sd-filter__option--active' : ''}`}
-                  onClick={() => { setFilter(opt.value); setDropdownOpen(false) }}
+                  key={option.value}
+                  className={`sd-filter__option${filter === option.value ? ' sd-filter__option--active' : ''}`}
+                  onClick={() => selectFilter(option.value)}
                 >
-                  {opt.label}
+                  {option.label}
                 </button>
               ))}
             </div>
@@ -179,7 +184,8 @@ export default function SensorData() {
         </div>
       </div>
 
-      {/* ── Table card ── */}
+      {error && <div className="sd-error">⚠ {error}</div>}
+
       <div className="sd-card">
         <table className="sd-table">
           <thead>
@@ -191,31 +197,33 @@ export default function SensorData() {
             </tr>
           </thead>
           <tbody>
-            {pageData.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan={4} className="sd-empty">Đang tải dữ liệu...</td>
+              </tr>
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={4} className="sd-empty">
-                  Không tìm thấy dữ liệu phù hợp
+                  {error ? 'Không thể hiển thị dữ liệu.' : 'Không tìm thấy dữ liệu phù hợp.'}
                 </td>
               </tr>
             ) : (
-              pageData.map((row) => (
+              rows.map((row) => (
                 <tr key={row.id}>
                   <td><span className="sd-id">{row.id}</span></td>
                   <td><span className="sd-name">{row.name}</span></td>
                   <td>
                     <ValueBadge type={row.type} value={row.value} unit={row.unit} />
                   </td>
-                  <td>{fmtTime(row.timestamp)}</td>
+                  <td>{fmtTime(row.createdAt)}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
 
-        {/* ── Pagination ── */}
-        {totalPages > 1 && (
+        {!loading && pagination.totalItems > 0 && (
           <div className="sd-pagination">
-            {/* First */}
             <button
               className="sd-page-btn"
               onClick={() => setPage(1)}
@@ -224,43 +232,37 @@ export default function SensorData() {
             >
               <ChevronsLeft size={14} />
             </button>
-            {/* Prev */}
             <button
               className="sd-page-btn"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={page === 1}
               title="Trang trước"
             >
               <ChevronLeft size={14} />
             </button>
 
-            {/* Page numbers */}
-            {pages.map((p, idx) =>
-              p === '…' ? (
-                <span key={`ellipsis-${idx}`} className="sd-page-btn" style={{ cursor: 'default' }}>
-                  …
-                </span>
+            {pages.map((pageNumber, index) => (
+              pageNumber === '…' ? (
+                <span key={`ellipsis-${index}`} className="sd-page-btn sd-page-ellipsis">…</span>
               ) : (
                 <button
-                  key={p}
-                  className={`sd-page-btn${page === p ? ' sd-page-btn--active' : ''}`}
-                  onClick={() => setPage(p)}
+                  key={pageNumber}
+                  className={`sd-page-btn${page === pageNumber ? ' sd-page-btn--active' : ''}`}
+                  onClick={() => setPage(pageNumber)}
                 >
-                  {p}
+                  {pageNumber}
                 </button>
               )
-            )}
+            ))}
 
-            {/* Next */}
             <button
               className="sd-page-btn"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={page === totalPages}
               title="Trang sau"
             >
               <ChevronRight size={14} />
             </button>
-            {/* Last */}
             <button
               className="sd-page-btn"
               onClick={() => setPage(totalPages)}

@@ -10,6 +10,10 @@ async function getSensorHistory(req, res, next) {
     const keyword = String(req.query.keyword || '').trim();
     const type = String(req.query.type || '').trim().toLowerCase();
 
+    if (keyword.length > 100) {
+      throw new AppError('keyword must not exceed 100 characters', 400);
+    }
+
     if (type && !SENSOR_TYPES.has(type)) {
       throw new AppError('type must be temperature, humidity, or light', 400);
     }
@@ -20,16 +24,15 @@ async function getSensorHistory(req, res, next) {
     if (keyword) {
       conditions.push(`(
         s.sensor_name LIKE ? OR
-        s.sensor_type LIKE ? OR
-        CAST(ds.data_id AS CHAR) LIKE ? OR
-        CAST(ds.value AS CHAR) LIKE ?
+        CAST(ds.value AS CHAR) LIKE ? OR
+        DATE_FORMAT(ds.created_at, '%Y/%m/%d %H:%i:%s') LIKE ?
       )`);
       const pattern = `%${keyword}%`;
-      params.push(pattern, pattern, pattern, pattern);
+      params.push(pattern, pattern, pattern);
     }
 
     if (type) {
-      conditions.push('s.sensor_type = ?');
+      conditions.push('LOWER(s.sensor_type) = ?');
       params.push(type);
     }
 
@@ -37,6 +40,8 @@ async function getSensorHistory(req, res, next) {
       ? `WHERE ${conditions.join(' AND ')}`
       : '';
 
+    // Only static SQL fragments are interpolated. All user-controlled values
+    // are passed as mysql2 placeholders to prevent SQL injection.
     const [countRows] = await pool.execute(
       `SELECT COUNT(*) AS total
        FROM data_sensor ds
@@ -50,7 +55,7 @@ async function getSensorHistory(req, res, next) {
          ds.data_id AS id,
          s.sensor_id AS sensorId,
          s.sensor_name AS name,
-         s.sensor_type AS type,
+         LOWER(s.sensor_type) AS type,
          ds.value,
          s.unit,
          ds.created_at AS createdAt

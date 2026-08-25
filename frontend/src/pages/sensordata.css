@@ -178,6 +178,17 @@
   text-align: center !important;
 }
 
+.sd-error {
+  margin-bottom: 14px;
+  padding: 10px 13px;
+  border: 1px solid #efcecb;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: #a8423e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .sd-pagination {
   display: flex;
   align-items: center;
@@ -210,6 +221,7 @@
 .sd-page-btn:disabled { opacity: 0.35; cursor: default; }
 .sd-page-btn--active { background: var(--ink) !important; color: #fff !important; font-weight: 700; }
 .sd-page-btn--active:hover { background: var(--ink) !important; }
+.sd-page-ellipsis { cursor: default; }
 
 @media (max-width: 700px) {
   .sd-toolbar { align-items: stretch; flex-direction: column; }
