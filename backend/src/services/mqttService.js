@@ -6,6 +6,8 @@ const CONTROL_TOPIC = process.env.MQTT_CONTROL_TOPIC || 'device/control';
 const STATUS_TOPIC = process.env.MQTT_STATUS_TOPIC || 'device/status';
 const MQTT_QOS = Number(process.env.MQTT_QOS || 1);
 const ACTION_TIMEOUT_MS = Number(process.env.ACTION_TIMEOUT_MS || 10_000);
+const configuredLightRawMax = Number(process.env.LIGHT_RAW_MAX || 1023);
+const LIGHT_RAW_MAX = configuredLightRawMax > 0 ? configuredLightRawMax : 1023;
 
 const actionTimers = new Map();
 let expirySweep;
@@ -30,7 +32,7 @@ function assertFiniteValue(value, label) {
 // Supported sensor payloads:
 // {"sensorId":1,"value":28.5}
 // {"readings":[{"sensorId":1,"value":28.5}, ...]}
-// {"temperature":28.5,"humidity":70,"light":350}
+// {"temperature":28.5,"humidity":70,"light":350} (light: raw ADC value)
 async function normalizeSensorReadings(payload) {
   const collection = Array.isArray(payload)
     ? payload
@@ -68,10 +70,12 @@ async function normalizeSensorReadings(payload) {
   const [sensors] = await pool.execute(
     `SELECT sensor_id AS sensorId, sensor_type AS sensorType
      FROM sensors
-     WHERE sensor_type IN (${placeholders})`,
+     WHERE LOWER(sensor_type) IN (${placeholders})`,
     presentTypes,
   );
-  const sensorsByType = new Map(sensors.map((sensor) => [sensor.sensorType, sensor.sensorId]));
+  const sensorsByType = new Map(
+    sensors.map((sensor) => [String(sensor.sensorType).toLowerCase(), sensor.sensorId]),
+  );
 
   return presentTypes.map((type) => {
     if (!sensorsByType.has(type)) {
@@ -91,11 +95,27 @@ async function saveSensorData(payload) {
   const readings = await normalizeSensorReadings(payload);
   if (readings.length === 0) return;
 
+  const sensorIds = [...new Set(readings.map((reading) => reading.sensorId))];
+  const placeholders = sensorIds.map(() => '?').join(', ');
+  const [sensors] = await pool.execute(
+    `SELECT sensor_id AS sensorId, LOWER(sensor_type) AS sensorType
+     FROM sensors
+     WHERE sensor_id IN (${placeholders})`,
+    sensorIds,
+  );
+  const sensorTypes = new Map(sensors.map((sensor) => [sensor.sensorId, sensor.sensorType]));
+  const normalizedReadings = readings.map((reading) => ({
+    ...reading,
+    value: sensorTypes.get(reading.sensorId) === 'light'
+      ? Number(Math.min(100, Math.max(0, (reading.value / LIGHT_RAW_MAX) * 100)).toFixed(2))
+      : Number(reading.value.toFixed(2)),
+  }));
+
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    for (const reading of readings) {
+    for (const reading of normalizedReadings) {
       await connection.execute(
         `INSERT INTO data_sensor (sensor_id, value, created_at)
          VALUES (?, ?, NOW())`,
@@ -104,7 +124,7 @@ async function saveSensorData(payload) {
     }
 
     await connection.commit();
-    console.info(`[MQTT] Stored ${readings.length} sensor reading(s)`);
+    console.info(`[MQTT] Stored ${normalizedReadings.length} sensor reading(s)`);
   } catch (error) {
     await connection.rollback();
     throw error;
