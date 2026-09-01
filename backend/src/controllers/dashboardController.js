@@ -1,8 +1,41 @@
 const { pool } = require('../config/database');
+const AppError = require('../utils/AppError');
+
+const CHART_BLOCK_MS = 5 * 60 * 1000;
+
+function getCurrentChartBlock() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  start.setMinutes(Math.floor(start.getMinutes() / 5) * 5);
+
+  return { start, end: new Date(start.getTime() + CHART_BLOCK_MS) };
+}
+
+function parseChartQuery(query) {
+  const defaultBlock = getCurrentChartBlock();
+  const start = query.chartStart ? new Date(query.chartStart) : defaultBlock.start;
+  const end = query.chartEnd ? new Date(query.chartEnd) : defaultBlock.end;
+  const afterId = Number(query.chartAfterId || 0);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+    throw new AppError('chartStart and chartEnd must define a valid time range', 400);
+  }
+
+  if (end.getTime() - start.getTime() !== CHART_BLOCK_MS) {
+    throw new AppError('chart time range must be exactly 5 minutes', 400);
+  }
+
+  if (!Number.isInteger(afterId) || afterId < 0) {
+    throw new AppError('chartAfterId must be a non-negative integer', 400);
+  }
+
+  return { start, end, afterId };
+}
 
 async function getDashboard(req, res, next) {
   try {
     const disconnectSeconds = Number(process.env.SENSOR_DISCONNECT_SECONDS || 30);
+    const chartQuery = parseChartQuery(req.query);
 
     // The correlated subquery returns exactly one newest row for each sensor,
     // including deterministic ordering when two rows have the same timestamp.
@@ -51,6 +84,23 @@ async function getDashboard(req, res, next) {
       [disconnectSeconds],
     );
 
+    const [chartRows] = await pool.execute(
+      `SELECT
+         MAX(ds.data_id) AS pointId,
+         MAX(ds.created_at) AS createdAt,
+         MAX(CASE WHEN s.sensor_type = 'TEMPERATURE' THEN ds.value END) AS temperature,
+         MAX(CASE WHEN s.sensor_type = 'HUMIDITY' THEN ds.value END) AS humidity,
+         MAX(CASE WHEN s.sensor_type = 'LIGHT' THEN ds.value END) AS light
+       FROM data_sensor ds
+       INNER JOIN sensors s ON s.sensor_id = ds.sensor_id
+       WHERE ds.created_at >= ?
+         AND ds.created_at < ?
+         AND ds.data_id > ?
+       GROUP BY ds.created_at
+       ORDER BY createdAt ASC`,
+      [chartQuery.start, chartQuery.end, chartQuery.afterId],
+    );
+
     const sensorDetails = sensorRows.map((row) => ({
       ...row,
       value: row.value === null ? null : Number(row.value),
@@ -58,9 +108,16 @@ async function getDashboard(req, res, next) {
 
     // This compact object matches the stat cards in the existing frontend.
     const sensors = Object.fromEntries(
-      sensorDetails.map((sensor) => [sensor.sensorType, sensor.value]),
+      sensorDetails.map((sensor) => [String(sensor.sensorType).toLowerCase(), sensor.value]),
     );
     const { connectionStatus, lastUpdated } = freshnessRows[0];
+    const chartData = chartRows.map((row) => ({
+      pointId: Number(row.pointId),
+      createdAt: row.createdAt,
+      temperature: row.temperature === null ? null : Number(row.temperature),
+      humidity: row.humidity === null ? null : Number(row.humidity),
+      light: row.light === null ? null : Number(row.light),
+    }));
 
     res.status(200).json({
       connectionStatus,
@@ -69,6 +126,7 @@ async function getDashboard(req, res, next) {
       lastUpdated,
       sensors,
       sensorDetails,
+      chartData,
       devices: deviceRows,
     });
   } catch (error) {
