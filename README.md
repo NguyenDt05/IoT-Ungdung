@@ -74,8 +74,13 @@ backend URL khi chạy local.
 Backend subscribe `sensor/data`. Phần cứng có thể gửi một trong các dạng sau:
 
 ```json
-{"temperature": 28.5, "humidity": 70, "light": 350}
+{"temperature": 28.5, "humidity": 70, "light": 335}
 ```
+
+`light` được gửi là giá trị ADC raw. Backend tự quy đổi theo `LIGHT_RAW_MAX` (mặc định
+1023) thành phần trăm 0–100 trước khi lưu. Đặt `LIGHT_RAW_MAX=4095` nếu firmware dùng
+ADC 12-bit. Database hiện có `deviceId` 1 (LED 1) và 2 (LED 2); firmware cần dùng đúng
+ID này khi nhận lệnh và gửi ACK.
 
 ```json
 {"readings": [{"sensorId": 1, "value": 28.5}, {"sensorId": 2, "value": 70}]}
@@ -101,7 +106,7 @@ chỉ `action_history` đổi thành `FAILED`; trạng thái thiết bị đư�
 
 ```powershell
 mosquitto_sub -h localhost -t device/control -v
-mosquitto_pub -h localhost -t sensor/data -m '{"temperature":28.5,"humidity":70,"light":350}'
+mosquitto_pub -h localhost -t sensor/data -m '{"temperature":28.5,"humidity":70,"light":335}'
 mosquitto_pub -h localhost -t device/status -m '{"actionId":1,"deviceId":1,"status":"ON"}'
 ```
 
