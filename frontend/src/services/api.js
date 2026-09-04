@@ -6,8 +6,8 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-export async function fetchDashboard(signal) {
-  const response = await api.get('/dashboard', { signal })
+export async function fetchDashboard(params, signal) {
+  const response = await api.get('/dashboard', { params, signal })
   return response.data
 }
 
@@ -23,11 +23,6 @@ export async function fetchSensorHistory(params, signal) {
 
 export async function fetchActionHistory(params, signal) {
   const response = await api.get('/action-history', { params, signal })
-  return response.data
-}
-
-export async function fetchProfile(signal) {
-  const response = await api.get('/profile', { signal })
   return response.data
 }
 
