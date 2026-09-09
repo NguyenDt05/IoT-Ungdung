@@ -1,59 +1,75 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchDashboard } from '../services/api'
+import { getCurrentTimeBlock } from '../utils/timeBlocks'
 
 const POLL_INTERVAL = 2_000
-const CHART_MAX_POINTS = 20
-
-const INITIAL_STATE = {
-  status: 'DISCONNECTED',
-  connectionStatus: 'DISCONNECTED',
-  sensors: { temperature: null, humidity: null, light: null },
-  devices: [],
-  chartData: [],
-  lastUpdated: null,
-}
-
-function formatTime(value) {
-  const date = value ? new Date(value) : new Date()
-  return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+const CHART_RENDER_INTERVAL = 5_000
+function createInitialState() {
+  return {
+    status: 'DISCONNECTED',
+    connectionStatus: 'DISCONNECTED',
+    sensors: { temperature: null, humidity: null, light: null },
+    devices: [
+      { id: 1, name: 'LED 1', status: 'OFF' },
+      { id: 2, name: 'LED 2', status: 'OFF' },
+    ],
+    chartData: [],
+    chartBlockStart: getCurrentTimeBlock().start.toISOString(),
+    lastUpdated: null,
+  }
 }
 
 export function useDashboard() {
-  const [data, setData] = useState(INITIAL_STATE)
+  const [data, setData] = useState(createInitialState)
   const [error, setError] = useState(null)
-  const lastReadingAtRef = useRef(null)
   const requestInFlightRef = useRef(false)
+  const activeBlockRef = useRef(getCurrentTimeBlock())
+  const chartBufferRef = useRef([])
+  const latestChartPointIdRef = useRef(0)
+
+  const resetChartBuffer = useCallback((block) => {
+    activeBlockRef.current = block
+    chartBufferRef.current = []
+    latestChartPointIdRef.current = 0
+  }, [])
 
   const fetchData = useCallback(async (signal) => {
     if (requestInFlightRef.current) return
     requestInFlightRef.current = true
 
     try {
-      const payload = await fetchDashboard(signal)
+      const currentBlock = getCurrentTimeBlock()
+      if (currentBlock.start.getTime() !== activeBlockRef.current.start.getTime()) {
+        resetChartBuffer(currentBlock)
+      }
+
+      const payload = await fetchDashboard({
+        chartStart: activeBlockRef.current.start.toISOString(),
+        chartEnd: activeBlockRef.current.end.toISOString(),
+        chartAfterId: latestChartPointIdRef.current,
+      }, signal)
       const connectionStatus = payload.connectionStatus || payload.status
+      const incomingPoints = Array.isArray(payload.chartData) ? payload.chartData : []
+
+      if (incomingPoints.length > 0) {
+        latestChartPointIdRef.current = Math.max(
+          latestChartPointIdRef.current,
+          ...incomingPoints.map((point) => Number(point.pointId) || 0),
+        )
+        chartBufferRef.current.push(...incomingPoints.map((point) => ({
+          ...point,
+          timestamp: new Date(point.createdAt).getTime(),
+        })))
+      }
 
       setData((previous) => {
-        let chartData = previous.chartData
-
-        if (payload.lastUpdated && payload.lastUpdated !== lastReadingAtRef.current) {
-          lastReadingAtRef.current = payload.lastUpdated
-          chartData = [
-            ...previous.chartData.slice(-(CHART_MAX_POINTS - 1)),
-            {
-              time: formatTime(payload.lastUpdated),
-              temperature: payload.sensors?.temperature ?? null,
-              humidity: payload.sensors?.humidity ?? null,
-              light: payload.sensors?.light ?? null,
-            },
-          ]
-        }
-
         return {
           ...previous,
           ...payload,
           status: connectionStatus,
           connectionStatus,
-          chartData,
+          chartData: previous.chartData,
+          chartBlockStart: previous.chartBlockStart,
         }
       })
       setError(null)
@@ -69,7 +85,7 @@ export function useDashboard() {
     } finally {
       requestInFlightRef.current = false
     }
-  }, [])
+  }, [resetChartBuffer])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -82,14 +98,46 @@ export function useDashboard() {
     }
   }, [fetchData])
 
-  const updateDeviceStatus = useCallback((deviceId, newStatus) => {
-    setData((previous) => ({
-      ...previous,
-      devices: previous.devices.map((device) => (
-        device.id === deviceId ? { ...device, status: newStatus } : device
-      )),
-    }))
-  }, [])
+  useEffect(() => {
+    const flushChartBuffer = () => {
+      const currentBlock = getCurrentTimeBlock()
+      if (currentBlock.start.getTime() !== activeBlockRef.current.start.getTime()) {
+        resetChartBuffer(currentBlock)
+      }
 
-  return { data, error, updateDeviceStatus }
+      const bufferedPoints = chartBufferRef.current.splice(0)
+      const blockStart = activeBlockRef.current.start.toISOString()
+
+      setData((previous) => {
+        if (previous.chartBlockStart !== blockStart) {
+          return {
+            ...previous,
+            chartBlockStart: blockStart,
+            chartData: bufferedPoints,
+          }
+        }
+
+        if (bufferedPoints.length === 0) return previous
+
+        return {
+          ...previous,
+          chartData: [...previous.chartData, ...bufferedPoints],
+        }
+      })
+    }
+
+    const delay = CHART_RENDER_INTERVAL - (Date.now() % CHART_RENDER_INTERVAL)
+    let intervalId
+    const timeoutId = setTimeout(() => {
+      flushChartBuffer()
+      intervalId = setInterval(flushChartBuffer, CHART_RENDER_INTERVAL)
+    }, delay)
+
+    return () => {
+      clearTimeout(timeoutId)
+      clearInterval(intervalId)
+    }
+  }, [resetChartBuffer])
+
+  return { data, error }
 }
