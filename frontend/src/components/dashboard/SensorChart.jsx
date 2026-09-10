@@ -1,46 +1,57 @@
-import { useState, useRef, useEffect } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import {
-  ResponsiveContainer,
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
 } from 'recharts'
+import { formatSensorValue } from '../../utils/formatters'
+import { formatChartTime, getMinuteTicks } from '../../utils/timeBlocks'
 import './dashboard.css'
 
-/* ── Dropdown options ── */
 const OPTIONS = [
-  { value: 'all',         label: 'Tất cả cảm biến' },
-  { value: 'temperature', label: 'Nhiệt độ (°C)'   },
-  { value: 'humidity',    label: 'Độ ẩm (%)'        },
-  { value: 'light',       label: 'Ánh sáng (Lux)'   },
+  { value: 'all', label: 'Tất cả cảm biến' },
+  { value: 'temperature', label: 'Nhiệt độ (°C)' },
+  { value: 'humidity', label: 'Độ ẩm (%)' },
+  { value: 'light', label: 'Ánh sáng (%)' },
 ]
 
-/* ── Custom Tooltip ── */
+const SERIES = [
+  { key: 'temperature', name: 'Nhiệt độ', unit: '°C', color: '#cf615b' },
+  { key: 'humidity', name: 'Độ ẩm', unit: '%', color: '#1f7a5b' },
+  { key: 'light', name: 'Ánh sáng', unit: '%', color: '#c88a2e' },
+]
+
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+
   return (
     <div className="chart-tooltip">
-      <p className="chart-tooltip__label">{label}</p>
-      {payload.map((p) => (
-        <p key={p.dataKey} className="chart-tooltip__value" style={{ color: p.color }}>
-          {p.name}: <span style={{ fontWeight: 700 }}>{p.value}</span>
-        </p>
-      ))}
+      <p className="chart-tooltip__label">{formatChartTime(label, true)}</p>
+      {SERIES.map((series) => {
+        const point = payload.find((item) => item.dataKey === series.key)
+        if (point?.value === null || point?.value === undefined) return null
+
+        return (
+          <p key={series.key} className="chart-tooltip__value" style={{ color: series.color }}>
+            {series.name}: <span style={{ fontWeight: 700 }}>{formatSensorValue(point.value)} {series.unit}</span>
+          </p>
+        )
+      })}
     </div>
   )
 }
 
-/* ── Custom Legend ── */
 function ChartLegend({ payload }) {
   return (
     <div className="chart-legend">
       {payload.map((entry) => (
-        <span key={entry.value} className="chart-legend__item">
+        <span key={entry.dataKey} className="chart-legend__item">
           <span className="chart-legend__line" style={{ background: entry.color }} />
           <span className="chart-legend__dot" style={{ background: entry.color }} />
           {entry.value}
@@ -50,42 +61,34 @@ function ChartLegend({ payload }) {
   )
 }
 
-/**
- * SensorChart – Recharts line chart với dropdown filter
- * Props: data – mảng { time, temperature, humidity, light }
- */
-export default function SensorChart({ data = [] }) {
-  const [selected, setSelected]       = useState('all')
+function SensorChart({ data = [], blockStart }) {
+  const [selected, setSelected] = useState('all')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const blockStartTime = new Date(blockStart).getTime()
+  const blockEndTime = blockStartTime + (5 * 60 * 1000)
+  const minuteTicks = useMemo(() => getMinuteTicks(blockStart), [blockStart])
+  const currentLabel = OPTIONS.find((option) => option.value === selected)?.label ?? OPTIONS[0].label
+  const hasData = data.some((point) => SERIES.some((series) => point[series.key] !== null && point[series.key] !== undefined))
 
   useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+    const closeDropdown = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setDropdownOpen(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+
+    document.addEventListener('mousedown', closeDropdown)
+    return () => document.removeEventListener('mousedown', closeDropdown)
   }, [])
 
-  const currentLabel = OPTIONS.find((o) => o.value === selected)?.label ?? 'Tất cả cảm biến'
-  const showTemp     = selected === 'all' || selected === 'temperature'
-  const showHumidity = selected === 'all' || selected === 'humidity'
-  const showLight    = selected === 'all' || selected === 'light'
-
   return (
-    <div className="chart-card anim-fade">
-      {/* Header */}
+    <div className="chart-card">
       <div className="chart-card__header">
         <h2 className="chart-card__title">Cảm biến theo thời gian</h2>
 
-        {/* Dropdown */}
         <div className="chart-dropdown" ref={dropdownRef}>
-          <button
-            className="chart-dropdown__btn"
-            onClick={() => setDropdownOpen((v) => !v)}
-          >
+          <button className="chart-dropdown__btn" onClick={() => setDropdownOpen((open) => !open)}>
             {currentLabel}
             <ChevronDown
               size={13}
@@ -95,13 +98,16 @@ export default function SensorChart({ data = [] }) {
 
           {dropdownOpen && (
             <div className="chart-dropdown__menu">
-              {OPTIONS.map((opt) => (
+              {OPTIONS.map((option) => (
                 <button
-                  key={opt.value}
-                  className={`chart-dropdown__option${selected === opt.value ? ' chart-dropdown__option--active' : ''}`}
-                  onClick={() => { setSelected(opt.value); setDropdownOpen(false) }}
+                  key={option.value}
+                  className={`chart-dropdown__option${selected === option.value ? ' chart-dropdown__option--active' : ''}`}
+                  onClick={() => {
+                    setSelected(option.value)
+                    setDropdownOpen(false)
+                  }}
                 >
-                  {opt.label}
+                  {option.label}
                 </button>
               ))}
             </div>
@@ -109,89 +115,70 @@ export default function SensorChart({ data = [] }) {
         </div>
       </div>
 
-      {/* Chart */}
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data} margin={{ top: 4, right: 16, left: -8, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 4" stroke="#e8ece9" vertical />
-
-          <XAxis
-            dataKey="time"
-            tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
-            tickLine={false}
-            axisLine={false}
-            dy={6}
-            interval="preserveStartEnd"
-          />
-
-          {/* Left axis: nhiệt độ + độ ẩm (0-50) */}
-          <YAxis
-            yAxisId="left"
-            domain={[0, 50]}
-            ticks={[0, 15, 25, 50]}
-            tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
-            tickLine={false}
-            axisLine={false}
-            dx={-2}
-          />
-
-          {/* Right axis: ánh sáng */}
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            domain={[0, 100]}
-            ticks={[0, 25, 50, 75, 100]}
-            tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
-            tickLine={false}
-            axisLine={false}
-            dx={2}
-          />
-
-          <Tooltip content={<ChartTooltip />} />
-          <Legend content={<ChartLegend />} />
-
-          {showTemp && (
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="temperature"
-              name="Nhiệt độ (°C)"
-              stroke="#cf615b"
-              strokeWidth={2}
-              dot={{ r: 3, fill: '#cf615b', strokeWidth: 0 }}
-              activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
-              isAnimationActive={false}
+      <div className="chart-card__body">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 4" stroke="#e8ece9" vertical={false} />
+            <XAxis
+              type="number"
+              dataKey="timestamp"
+              domain={[blockStartTime, blockEndTime]}
+              ticks={minuteTicks}
+              tickFormatter={(value) => formatChartTime(value)}
+              tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
+              tickLine={false}
+              axisLine={false}
+              dy={6}
             />
-          )}
-          {showHumidity && (
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="humidity"
-              name="Độ ẩm (%)"
-              stroke="#1f7a5b"
-              strokeWidth={2}
-              dot={{ r: 3, fill: '#1f7a5b', strokeWidth: 0 }}
-              activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
-              isAnimationActive={false}
+            <YAxis
+              yAxisId="scale"
+              domain={[0, 100]}
+              ticks={[0, 20, 40, 60, 80, 100]}
+              label={{ value: '% / °C', angle: -90, position: 'insideLeft', fill: '#88928c', fontSize: 10 }}
+              tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
+              tickLine={false}
+              axisLine={false}
+              width={42}
             />
-          )}
-          {showLight && (
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="light"
-              name="Ánh sáng (Lux)"
-              stroke="#c88a2e"
-              strokeWidth={2}
-              dot={{ r: 3, fill: '#c88a2e', strokeWidth: 0 }}
-              activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }}
-              isAnimationActive={false}
+            <YAxis
+              yAxisId="scale-right"
+              orientation="right"
+              domain={[0, 100]}
+              ticks={[0, 20, 40, 60, 80, 100]}
+              label={{ value: '% / °C', angle: 90, position: 'insideRight', fill: '#88928c', fontSize: 10 }}
+              tick={{ fontSize: 10.5, fill: '#88928c', fontWeight: 500 }}
+              tickLine={false}
+              axisLine={false}
+              width={42}
             />
-          )}
-        </LineChart>
-      </ResponsiveContainer>
+            <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#a4ada7', strokeWidth: 1 }} />
+            <Legend content={<ChartLegend />} />
 
-      <p className="chart-unit-note">°C / %</p>
+            {SERIES.map((series) => (
+              <Line
+                key={series.key}
+                yAxisId="scale"
+                type="monotone"
+                dataKey={series.key}
+                name={series.name}
+                stroke={series.color}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2 }}
+                connectNulls={false}
+                hide={selected !== 'all' && selected !== series.key}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+
+        {!hasData && <p className="chart-empty">Đang chờ dữ liệu từ thiết bị...</p>}
+      </div>
+
+      <p className="chart-unit-note">{formatChartTime(blockStartTime)} – {formatChartTime(blockEndTime)}</p>
     </div>
   )
 }
+
+export default memo(SensorChart)
