@@ -3,81 +3,69 @@ import { Lightbulb } from 'lucide-react'
 import { controlDevice } from '../../services/api'
 import './dashboard.css'
 
-/**
- * DeviceToggle – card điều khiển LED
- * Props:
- *   device           – { id, name, status: 'ON'|'OFF' }
- *   onToggleSuccess  – callback(deviceId, newStatus)
- */
-export default function DeviceToggle({ device, onToggleSuccess }) {
-  const [pending, setPending] = useState(null) // null | 'ON' | 'OFF'
-  const [error, setError]   = useState(null)
+const REQUEST_TIMEOUT_MS = 8_000
+const DEVICE_RESPONSE_TIMEOUT_MS = 10_500
 
-  const isOn      = device.status === 'ON'
-  const isLoading = pending !== null
+export default function DeviceToggle({ device }) {
+  const [pendingCommand, setPendingCommand] = useState(null)
+  const [error, setError] = useState(null)
+  const isOn = device.status === 'ON'
+  const isLoading = pendingCommand !== null
+  const displayOn = isLoading ? pendingCommand === 'ON' : isOn
 
-  // Trạng thái hiển thị (ưu tiên pending nếu đang loading)
-  const displayOn = isLoading ? pending === 'ON' : isOn
-
-  // POST chỉ tạo bản ghi PENDING. Trạng thái xác nhận sẽ đến từ dashboard
-  // polling sau khi phần cứng ACK và backend cập nhật MySQL.
   useEffect(() => {
-    if (pending && device.status === pending) {
-      onToggleSuccess?.(device.id, pending)
-      setPending(null)
+    if (pendingCommand && device.status === pendingCommand) {
+      setPendingCommand(null)
     }
-  }, [device.id, device.status, onToggleSuccess, pending])
+  }, [device.status, pendingCommand])
 
   useEffect(() => {
-    if (!pending) return undefined
+    if (!pendingCommand) return undefined
 
-    const timer = setTimeout(() => {
-      setPending(null)
+    const timeoutId = setTimeout(() => {
+      setPendingCommand(null)
       setError('Hết thời gian chờ phản hồi thiết bị (10s)')
-    }, 10_500)
+    }, DEVICE_RESPONSE_TIMEOUT_MS)
 
-    return () => clearTimeout(timer)
-  }, [pending])
+    return () => clearTimeout(timeoutId)
+  }, [pendingCommand])
 
   const handleToggle = async () => {
     if (isLoading) return
 
-    const next = isOn ? 'OFF' : 'ON'
-    setPending(next)
+    const command = isOn ? 'OFF' : 'ON'
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+    setPendingCommand(command)
     setError(null)
 
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8_000)
-
     try {
-      const result = await controlDevice(device.id, next, controller.signal)
+      const result = await controlDevice(device.id, command, controller.signal)
+
       if (result.action?.status !== 'PENDING') {
         throw new Error('Command was not accepted')
       }
-    } catch (err) {
-      setPending(null)
-      const msg =
-        err.name === 'CanceledError' || err.code === 'ERR_CANCELED'
-          ? 'Hết thời gian kết nối máy chủ'
-          : err.response?.data?.message || 'Lỗi điều khiển thiết bị'
-      setError(msg)
-      setTimeout(() => setError(null), 3000)
+    } catch (requestError) {
+      setPendingCommand(null)
+      const message = requestError.name === 'CanceledError' || requestError.code === 'ERR_CANCELED'
+        ? 'Hết thời gian kết nối máy chủ'
+        : requestError.response?.data?.message || 'Lỗi điều khiển thiết bị'
+
+      setError(message)
+      setTimeout(() => setError(null), 3_000)
     } finally {
-      clearTimeout(timer)
+      clearTimeout(timeoutId)
     }
   }
 
-  /* ---- Status label ---- */
-  let statusLabel = displayOn ? 'BẬT' : 'TẮT'
-  let statusMod   = displayOn ? 'device-card__status--on' : 'device-card__status--off'
-  if (isLoading) {
-    statusLabel = pending === 'ON' ? 'BẬT...' : 'TẮT...'
-    statusMod   = 'device-card__status--loading'
-  }
+  const statusLabel = isLoading ? `${displayOn ? 'BẬT' : 'TẮT'}...` : displayOn ? 'BẬT' : 'TẮT'
+  const statusClass = isLoading
+    ? 'device-card__status--loading'
+    : displayOn ? 'device-card__status--on' : 'device-card__status--off'
 
   return (
-    <div className="device-card anim-fade">
-      {/* Header */}
+    <div className="device-card">
       <div className="device-card__header">
         <Lightbulb
           size={14}
@@ -87,28 +75,15 @@ export default function DeviceToggle({ device, onToggleSuccess }) {
         <span className="device-card__name">{device.name}</span>
       </div>
 
-      {/* Status row */}
       <div className="device-card__body">
-        <span className={`device-card__status ${statusMod}`}>
-          {statusLabel}
-        </span>
-
-        {/* Toggle */}
+        <span className={`device-card__status ${statusClass}`}>{statusLabel}</span>
         <label className="toggle" title={isLoading ? 'Đang xử lý...' : `${displayOn ? 'Tắt' : 'Bật'} ${device.name}`}>
-          <input
-            type="checkbox"
-            checked={displayOn}
-            onChange={handleToggle}
-            disabled={isLoading}
-          />
+          <input type="checkbox" checked={displayOn} onChange={handleToggle} disabled={isLoading} />
           <span className={`toggle__track${isLoading ? ' toggle__track--loading' : ''}`} />
         </label>
       </div>
 
-      {/* Error */}
-      {error && (
-        <p className="device-card__error">⚠ {error}</p>
-      )}
+      {error && <p className="device-card__error">⚠ {error}</p>}
     </div>
   )
 }

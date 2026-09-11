@@ -1,4 +1,5 @@
 import './dashboard.css'
+import { formatSensorValue } from '../../utils/formatters'
 
 /**
  * StatCard – một thẻ thông số cảm biến
@@ -7,11 +8,10 @@ import './dashboard.css'
 export default function StatCard({ title, value, unit, color = 'green', status }) {
   const mod = color === 'yellow' ? 'stat-card--yellow' : 'stat-card--green'
 
-  const display =
-    value !== null && value !== undefined ? value : '—'
+  const display = formatSensorValue(value)
 
   return (
-    <div className={`stat-card ${mod} anim-fade`}>
+    <div className={`stat-card ${mod}`}>
       <p className="stat-card__label">{title}</p>
 
       <div className="stat-card__value">

@@ -1,4 +1,4 @@
-import { Wifi, WifiOff, RefreshCw } from 'lucide-react'
+import { Wifi, WifiOff } from 'lucide-react'
 import './dashboard.css'
 
 /**
@@ -21,15 +21,13 @@ export default function ConnectionBanner({ status, lastUpdated }) {
 
   return (
     <div className="banner banner--disconnected">
-      <WifiOff size={14} className="banner__icon anim-blink" />
+      <WifiOff size={14} className="banner__icon" />
       <div>
         <p>Mất kết nối phần cứng</p>
         <p className="banner__desc">
           Hiển thị dữ liệu cuối cùng – đang thử kết nối lại...
         </p>
       </div>
-      <span className="banner__spacer" />
-      <RefreshCw size={13} className="anim-spin" style={{ color: '#fca5a5' }} />
     </div>
   )
 }
