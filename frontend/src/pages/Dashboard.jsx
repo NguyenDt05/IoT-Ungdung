@@ -5,8 +5,8 @@ import SensorChart      from '../components/dashboard/SensorChart'
 import DisconnectAlert  from '../components/dashboard/ConnectionBanner'
 
 export default function Dashboard() {
-  const { data, error, updateDeviceStatus } = useDashboard()
-  const { status, sensors, devices, chartData, lastUpdated } = data
+  const { data, error } = useDashboard()
+  const { status, sensors, devices, chartData, chartBlockStart, lastUpdated } = data
 
   return (
     <div className="page dashboard-page">
@@ -44,7 +44,7 @@ export default function Dashboard() {
         <StatCard
           title="Cảm biến ánh sáng"
           value={sensors.light}
-          unit="Lux"
+          unit="%"
           color="yellow"
           status={status}
         />
@@ -63,13 +63,12 @@ export default function Dashboard() {
           <DeviceToggle
             key={device.id}
             device={device}
-            onToggleSuccess={updateDeviceStatus}
           />
         ))}
       </div>
 
       {/* ── Row 3: Chart ── */}
-      <SensorChart data={chartData} />
+      <SensorChart data={chartData} blockStart={chartBlockStart} />
     </div>
   )
 }
