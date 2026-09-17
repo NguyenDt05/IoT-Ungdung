@@ -1,41 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Search,
   ChevronDown,
   Thermometer,
   Droplets,
   Sun,
-  ChevronsLeft,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsRight,
 } from 'lucide-react'
 import { fetchSensorHistory } from '../services/api'
+import Pagination from '../components/common/Pagination'
+import { formatDateTime, formatSensorValue } from '../utils/formatters'
+import '../components/common/data-table.css'
 import './sensordata.css'
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 50
 const SEARCH_DEBOUNCE_MS = 500
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả cảm biến' },
   { value: 'temperature', label: 'Nhiệt độ (°C)' },
   { value: 'humidity', label: 'Độ ẩm (%)' },
-  { value: 'light', label: 'Ánh sáng (Lux)' },
+  { value: 'light', label: 'Ánh sáng (%)' },
 ]
-
-function fmtTime(timestamp) {
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return '—'
-
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const year = date.getFullYear()
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  const seconds = String(date.getSeconds()).padStart(2, '0')
-
-  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`
-}
 
 function ValueBadge({ type, value, unit }) {
   const className =
@@ -49,16 +34,9 @@ function ValueBadge({ type, value, unit }) {
   return (
     <span className={className}>
       <Icon size={13} strokeWidth={2} />
-      {value}{unit}
+      {formatSensorValue(value)}{unit}
     </span>
   )
-}
-
-function pageNumbers(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1)
-  if (current <= 4) return [1, 2, 3, 4, 5, '…', total]
-  if (current >= total - 3) return [1, '…', total - 4, total - 3, total - 2, total - 1, total]
-  return [1, '…', current - 1, current, current + 1, '…', total]
 }
 
 export default function SensorData() {
@@ -126,8 +104,6 @@ export default function SensorData() {
     return () => controller.abort()
   }, [filter, keyword, page])
 
-  const totalPages = Math.max(1, Number(pagination.totalPages) || 0)
-  const pages = useMemo(() => pageNumbers(page, totalPages), [page, totalPages])
   const currentLabel = FILTER_OPTIONS.find((option) => option.value === filter)?.label
     ?? FILTER_OPTIONS[0].label
 
@@ -184,94 +160,71 @@ export default function SensorData() {
         </div>
       </div>
 
-      {error && <div className="sd-error">⚠ {error}</div>}
+      {error && <div className="data-error">⚠ {error}</div>}
 
-      <div className="sd-card">
-        <table className="sd-table">
-          <thead>
-            <tr>
-              <th style={{ width: 60 }}>ID</th>
-              <th>Tên cảm biến</th>
-              <th style={{ width: 160 }}>Giá trị</th>
-              <th style={{ width: 200 }}>Thời gian</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      <div className="data-card">
+        <div className="data-table-header">
+          <table className="data-table sd-table">
+            <colgroup>
+              <col style={{ width: 60 }} />
+              <col />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 200 }} />
+            </colgroup>
+            <thead>
               <tr>
-                <td colSpan={4} className="sd-empty">Đang tải dữ liệu...</td>
+                <th style={{ width: 60 }}>ID</th>
+                <th>Tên cảm biến</th>
+                <th style={{ width: 160 }}>Giá trị</th>
+                <th style={{ width: 200 }}>Thời gian</th>
               </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="sd-empty">
-                  {error ? 'Không thể hiển thị dữ liệu.' : 'Không tìm thấy dữ liệu phù hợp.'}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id}>
-                  <td><span className="sd-id">{row.id}</span></td>
-                  <td><span className="sd-name">{row.name}</span></td>
-                  <td>
-                    <ValueBadge type={row.type} value={row.value} unit={row.unit} />
-                  </td>
-                  <td>{fmtTime(row.createdAt)}</td>
+            </thead>
+          </table>
+        </div>
+
+        <div className="data-table-scroll">
+          <table className="data-table sd-table">
+            <colgroup>
+              <col style={{ width: 60 }} />
+              <col />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 200 }} />
+            </colgroup>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={4} className="data-empty">Đang tải dữ liệu...</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-
-        {!loading && pagination.totalItems > 0 && (
-          <div className="sd-pagination">
-            <button
-              className="sd-page-btn"
-              onClick={() => setPage(1)}
-              disabled={page === 1}
-              title="Trang đầu"
-            >
-              <ChevronsLeft size={14} />
-            </button>
-            <button
-              className="sd-page-btn"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page === 1}
-              title="Trang trước"
-            >
-              <ChevronLeft size={14} />
-            </button>
-
-            {pages.map((pageNumber, index) => (
-              pageNumber === '…' ? (
-                <span key={`ellipsis-${index}`} className="sd-page-btn sd-page-ellipsis">…</span>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="data-empty">
+                    {error ? 'Không thể hiển thị dữ liệu.' : 'Không tìm thấy dữ liệu phù hợp.'}
+                  </td>
+                </tr>
               ) : (
-                <button
-                  key={pageNumber}
-                  className={`sd-page-btn${page === pageNumber ? ' sd-page-btn--active' : ''}`}
-                  onClick={() => setPage(pageNumber)}
-                >
-                  {pageNumber}
-                </button>
-              )
-            ))}
+                rows.map((row) => (
+                  <tr key={row.id}>
+                    <td><span className="sd-id">{row.id}</span></td>
+                    <td><span className="sd-name">{row.name}</span></td>
+                    <td>
+                      <ValueBadge type={row.type} value={row.value} unit={row.unit} />
+                    </td>
+                    <td className="data-table__time">{formatDateTime(row.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-            <button
-              className="sd-page-btn"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page === totalPages}
-              title="Trang sau"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <button
-              className="sd-page-btn"
-              onClick={() => setPage(totalPages)}
-              disabled={page === totalPages}
-              title="Trang cuối"
-            >
-              <ChevronsRight size={14} />
-            </button>
-          </div>
+        {!loading && (
+          <Pagination
+            page={page}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
         )}
       </div>
     </div>
