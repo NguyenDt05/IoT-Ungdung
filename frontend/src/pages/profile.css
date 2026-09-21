@@ -37,10 +37,7 @@
   min-height: 368px;
   object-fit: cover;
   object-position: 50% 42%;
-  transition: transform 400ms ease;
 }
-
-.profile-card:hover .profile-avatar { transform: scale(1.015); }
 
 .profile-info {
   align-self: center;
