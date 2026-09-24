@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 :root {
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   color: #1d2923;
@@ -41,11 +39,12 @@ html,
 body,
 #root {
   min-width: 320px;
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
   background: var(--canvas);
   color: var(--ink);
@@ -76,25 +75,35 @@ input:focus-visible,
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 93% 4%, rgba(31, 122, 91, 0.055), transparent 24rem),
-    var(--canvas);
+  background: var(--canvas);
 }
 
 .app-main {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
 .app-content {
   width: min(100%, 1160px);
+  height: 100%;
   margin: 0 auto;
-  padding: 30px 34px 40px;
+  padding: 24px 34px;
+  overflow: hidden;
+}
+
+.page {
+  height: 100%;
+  min-height: 0;
+}
+
+.sensor-data-page,
+.action-history-page,
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -132,9 +141,7 @@ input:focus-visible,
 }
 
 @media (max-width: 760px) {
-  .app-shell { overflow: auto; }
-  .app-main { overflow: visible; }
-  .app-content { padding: 22px 18px 32px; }
+  .app-content { padding: 18px; }
   .page-header { margin-bottom: 18px; padding-bottom: 14px; }
 }
 

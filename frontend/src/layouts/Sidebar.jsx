@@ -1,7 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, LineChart, History } from 'lucide-react'
 import './sidebar.css'
-import '../pages/profile.css'
 import avatarImage from '../z7737901163981_8f242a8734b65830ac438063d1af9076.jpg'
 
 const NAV_ITEMS = [
